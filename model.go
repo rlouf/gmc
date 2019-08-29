@@ -4,6 +4,7 @@ import (
 	"log"
 	"math"
 
+	"github.com/rlouf/gmc/node"
 	"golang.org/x/exp/rand"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat/distuv"
@@ -13,9 +14,9 @@ import (
 // A Model contains the information necessary to describe a directed
 // probabilistic graphical model and its inference environment.
 type Model struct {
-	static    []Var // contains constants and transformed variables
-	observed  []RandVar
-	variables []RandVar
+	static    []node.Var // contains constants and transformed variables
+	observed  []node.RandVar
+	variables []node.RandVar
 
 	Src *rand.Rand // random number source used for sampling
 }
@@ -31,7 +32,7 @@ func NewModel() *Model {
 // Observe sets the value of a variable and adds it to the observed set. This
 // prevents its value from being changed during the sampling process.
 // Observed variables set empirical constraints on the model.
-func (m *Model) Observe(variable RandVar, value float64) {
+func (m *Model) Observe(variable node.RandVar, value float64) {
 	for i, model_var := range m.variables {
 		if variable.Name() == model_var.Name() {
 			m.variables = append(m.variables[:i], m.variables[i+1:]...)
@@ -54,7 +55,7 @@ func (m *Model) LogProb(proposed []float64) float64 {
 	for i, value := range proposed {
 		err := m.variables[i].SetValue(value)
 		if err != nil {
-			if _, ok := err.(*OutOfBoundsErr); ok {
+			if _, ok := err.(*node.OutOfBoundsErr); ok {
 				return math.Inf(-1)
 			}
 			panic("unexpected error while setting the variable's value")
@@ -168,8 +169,8 @@ func (m *Model) SamplePosteriorPredictive(numSamples int, trace map[string][]flo
 
 // The following functions allow to add the variables defined in
 // `continuous.go`, `discrete.go` and `static.go` to the model.
-func (m *Model) Normal(name string, mu, sigma Var) *Normal {
-	newNormal := NewNormal(name, mu, sigma, m.Src)
+func (m *Model) Normal(name string, mu, sigma node.Var) *node.Normal {
+	newNormal := node.NewNormal(name, mu, sigma, m.Src)
 	if m.IsTaken(name) {
 		log.Panicf("variable name is already taken: %s", name)
 	}
@@ -177,8 +178,8 @@ func (m *Model) Normal(name string, mu, sigma Var) *Normal {
 	return newNormal
 }
 
-func (m *Model) Beta(name string, alpha, beta Var) *Beta {
-	newBeta := newBeta(name, alpha, beta, m.Src)
+func (m *Model) Beta(name string, alpha, beta node.Var) *node.Beta {
+	newBeta := node.NewBeta(name, alpha, beta, m.Src)
 	if m.IsTaken(name) {
 		log.Panicf("variable name is already taken: %s", name)
 	}
@@ -187,8 +188,8 @@ func (m *Model) Beta(name string, alpha, beta Var) *Beta {
 }
 
 // Discrete
-func (m *Model) Bernoulli(name string, p Var) *Bernoulli {
-	newBernoulli := NewBernoulli(name, p, m.Src)
+func (m *Model) Bernoulli(name string, p node.Var) *node.Bernoulli {
+	newBernoulli := node.NewBernoulli(name, p, m.Src)
 	if m.IsTaken(name) {
 		log.Panicf("variable name is already taken: %s", name)
 	}
@@ -196,11 +197,11 @@ func (m *Model) Bernoulli(name string, p Var) *Bernoulli {
 	return newBernoulli
 }
 
-func (m *Model) Binomial(name string, N float64, p Var) *Binomial {
+func (m *Model) Binomial(name string, N float64, p node.Var) *node.Binomial {
 	if N == 0.0 {
 		log.Panicf("The number of bernoulli trial must be > 0, got %f", N)
 	}
-	newBinomial := NewBinomial(name, N, p, m.Src)
+	newBinomial := node.NewBinomial(name, N, p, m.Src)
 	if m.IsTaken(name) {
 		log.Panicf("variable name is already taken: %s", name)
 	}
@@ -209,15 +210,15 @@ func (m *Model) Binomial(name string, N float64, p Var) *Binomial {
 }
 
 // Constant
-func (m *Model) Constant(value float64) Var {
-	newConst := &Constant{value: value}
+func (m *Model) Constant(value float64) node.Var {
+	newConst := node.NewConstant(value)
 	m.static = append(m.static, newConst)
 	return newConst
 }
 
 // Transformations
-func (m *Model) Sum(x, y Var) Var {
-	transformed := &SumGate{
+func (m *Model) Sum(x, y node.Var) node.Var {
+	transformed := &node.SumGate{
 		X: x,
 		Y: y,
 	}
@@ -225,8 +226,8 @@ func (m *Model) Sum(x, y Var) Var {
 	return transformed
 }
 
-func (m *Model) Prod(x, y Var) Var {
-	transformed := &ProdGate{
+func (m *Model) Prod(x, y node.Var) node.Var {
+	transformed := &node.ProdGate{
 		X: x,
 		Y: y,
 	}
@@ -234,25 +235,25 @@ func (m *Model) Prod(x, y Var) Var {
 	return transformed
 }
 
-func (m *Model) Logistic(x Var) Var {
-	transformed := &LogisticGate{
+func (m *Model) Logistic(x node.Var) node.Var {
+	transformed := &node.LogisticGate{
 		X: x,
 	}
 	m.static = append(m.static, transformed)
 	return transformed
 }
 
-func (m *Model) Logit(x Var) Var {
-	transformed := &LogitGate{
+func (m *Model) Logit(x node.Var) node.Var {
+	transformed := &node.LogitGate{
 		X: x,
 	}
 	m.static = append(m.static, transformed)
 	return transformed
 }
 
-func (m *Model) Switch(threshold float64, Switch, Left, Right Var) Var {
-	transformed := &SwitchGate{
-		threshold: threshold,
+func (m *Model) Switch(threshold float64, Switch, Left, Right node.Var) node.Var {
+	transformed := &node.SwitchGate{
+		Threshold: threshold,
 		Switch:    Switch,
 		Left:      Left,
 		Right:     Right,

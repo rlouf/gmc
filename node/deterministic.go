@@ -1,4 +1,4 @@
-package main
+package node
 
 import (
 	"log"
@@ -7,6 +7,10 @@ import (
 
 type Constant struct {
 	value float64
+}
+
+func NewConstant(value float64) *Constant {
+	return &Constant{value: value}
 }
 
 func (c *Constant) Value() float64 {
@@ -87,7 +91,7 @@ func (l *LogitGate) Value() float64 {
 // 	  if s <= t: the gate's value is l
 //    if s > t : the gate's value is r
 type SwitchGate struct {
-	threshold float64
+	Threshold float64
 	Switch    Var
 	Left      Var
 	Right     Var
@@ -95,7 +99,7 @@ type SwitchGate struct {
 
 func (s *SwitchGate) Value() float64 {
 	t := s.Switch.Value()
-	if t <= s.threshold {
+	if t <= s.Threshold {
 		return s.Left.Value()
 	}
 	return s.Right.Value()
